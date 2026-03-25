@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Force dark background on html/body so no white flash */
+html, body, #root {
+  background: #000;
+  min-height: 100%;
+}
