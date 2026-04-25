@@ -1,16 +1,15 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { loadSave, saveSave } from "./game/store";
+import { pickQuestion, adaptDiff, recordPerf } from "./game/dedup";
+import { fpSingle, fpPair } from "./game/fingerprint";
+import { canon } from "./game/math";
+import { NEW_GENS } from "./game/generators";
+import { NEW_WORLDS, NEW_TIPS } from "./game/worlds";
+import { sfx, setSfxMuted } from "./audio/sfx";
+import MissionIntroScreen from "./screens/MissionIntroScreen";
 
-/* ═══════════════════════════════════════════════════
-   SAVE / LOAD  (localStorage)
-═══════════════════════════════════════════════════ */
-const SAVE_KEY = "fq_save_v2";
-function loadSave() {
-  try { const r = localStorage.getItem(SAVE_KEY); if (r) return JSON.parse(r); } catch (_) {}
-  return { xp: 0, lv: 1, stars: {}, tutSeen: {}, lang: null };
-}
-function writeSave(gs) {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(gs)); } catch (_) {}
-}
+const writeSave = saveSave;
+const tap = () => { try { navigator.vibrate?.(10); } catch (_) {} sfx.click(); };
 
 /* ═══════════════════════════════════════════════════
    PROCEDURAL CHIPTUNE (Web Audio — no files needed)
@@ -125,6 +124,7 @@ const TIPS = {
     EN: ["Same bottom? Just SUBTRACT the top numbers ➖","Subtract ONLY the tops — keep the bottom unchanged 💡","Example: 4/7 − 2/7 = 2/7 — bottom stays ✅"],
     TL: ["Parehong ibaba? I-BAWAS lang ang mga itaas na numero ➖","Ibawas LAMANG ang mga itaas — ang ibaba ay hindi nagbabago 💡","Halimbawa: 4/7 − 2/7 = 2/7 — pareho pa rin ang ibaba ✅"],
   },
+  ...NEW_TIPS,
 };
 
 /* ═══════════════════════════════════════════════════
@@ -353,6 +353,7 @@ const WORLDS = [
       { name: { EN: "Level 2 – River",   TL: "Antas 2 – Ilog" }, diff: 1, enemy: { emoji: "🦈", name: "Dark Shark",   atk: "🦷" } },
       { name: { EN: "Level 3 – Deep",    TL: "Antas 3 – Kailaliman" }, diff: 2, enemy: { emoji: "🐙", name: "Giant Kraken", atk: "🌊" } },
     ] },
+  ...NEW_WORLDS,
 ];
 
 /* ═══════════════════════════════════════════════════
@@ -363,42 +364,46 @@ function genProper(diff) {
   const d = R(3, maxD), n = R(1, d - 1);
   const w = [];
   while (w.length < 3) { const wd = R(2, maxD), wn = wd + R(0, 4); if (!w.find(x => x.n === wn && x.d === wd) && wn !== n) w.push({ n: wn, d: wd, isCorrect: false }); }
-  return { type: "mc-frac", instruction: "Which one is a PROPER fraction? (top < bottom) 🎯", choices: shuf([{ n, d, isCorrect: true }, ...w]), answer: { n, d }, hint: pick(TIPS.proper.EN) };
+  return { type: "mc-frac", instruction: "Which one is a PROPER fraction? (top < bottom) 🎯", choices: shuf([{ n, d, isCorrect: true }, ...w]), answer: { n, d }, hint: pick(TIPS.proper.EN), process: `${n} < ${d} → ${n}/${d} is proper`, fingerprint: `prop|${canon(n, d)}` };
 }
 function genImproper(diff) {
   const maxD = diff === 0 ? 5 : diff === 1 ? 8 : 12, d = R(2, maxD), w2 = R(1, diff === 0 ? 3 : 5), ex = R(1, d - 1), n = w2 * d + ex;
   if (diff < 2) {
     const ws = [];
     while (ws.length < 3) { const ww = R(1, 4), wn = R(1, d - 1), wd = d + R(-1, 2) || d; if (!ws.find(x => x.w === ww && x.n === wn)) ws.push({ w: ww, n: wn, d: wd, isCorrect: false }); }
-    return { type: "mc-mixed", instruction: diff === 0 ? "Convert to a Mixed Number! 🔄" : "Convert this improper fraction! 🔄", displayFrac: { n, d }, choices: shuf([{ w: w2, n: ex, d, isCorrect: true }, ...ws]), answer: { w: w2, n: ex, d }, hint: pick(TIPS.improper.EN) };
+    return { type: "mc-mixed", instruction: diff === 0 ? "Convert to a Mixed Number! 🔄" : "Convert this improper fraction! 🔄", displayFrac: { n, d }, choices: shuf([{ w: w2, n: ex, d, isCorrect: true }, ...ws]), answer: { w: w2, n: ex, d }, hint: pick(TIPS.improper.EN), process: `${n} ÷ ${d} = ${w2} R ${ex} → ${w2} ${ex}/${d}`, fingerprint: `imp|${canon(n, d)}` };
   }
-  return { type: "type-mixed", instruction: "Convert to a Mixed Number! 🔄", displayFrac: { n, d }, answer: { w: w2, n: ex, d }, hint: pick(TIPS.improper.EN) };
+  return { type: "type-mixed", instruction: "Convert to a Mixed Number! 🔄", displayFrac: { n, d }, answer: { w: w2, n: ex, d }, hint: pick(TIPS.improper.EN), process: `${n} ÷ ${d} = ${w2} R ${ex} → ${w2} ${ex}/${d}`, fingerprint: `imp|${canon(n, d)}` };
 }
 function genMixed(diff) {
   const maxD = diff === 0 ? 5 : diff === 1 ? 8 : 12, d = R(2, maxD), w2 = R(1, diff === 0 ? 3 : 5), n = R(1, d - 1), ansN = w2 * d + n;
   if (diff < 2) {
     const ws = [];
     while (ws.length < 3) { const wn = ansN + R(-3, 4) || ansN + 1, wd = d + R(-1, 2) || d; if (wn > 0 && wd > 0 && !(wn === ansN && wd === d) && !ws.find(x => x.n === wn && x.d === wd)) ws.push({ n: wn, d: wd, isCorrect: false }); }
-    return { type: "mc-frac", instruction: diff === 0 ? "Convert to an Improper Fraction! 🔄" : "Convert this mixed number! 🔄", displayMixed: { w: w2, n, d }, choices: shuf([{ n: ansN, d, isCorrect: true }, ...ws]), answer: { n: ansN, d }, hint: pick(TIPS.mixed.EN) };
+    return { type: "mc-frac", instruction: diff === 0 ? "Convert to an Improper Fraction! 🔄" : "Convert this mixed number! 🔄", displayMixed: { w: w2, n, d }, choices: shuf([{ n: ansN, d, isCorrect: true }, ...ws]), answer: { n: ansN, d }, hint: pick(TIPS.mixed.EN), process: `(${w2}×${d})+${n} = ${ansN} → ${ansN}/${d}`, fingerprint: `mxd|${w2}+${canon(n, d)}` };
   }
-  return { type: "type-frac", instruction: "Convert to an Improper Fraction! 🔄", displayMixed: { w: w2, n, d }, answer: { n: ansN, d }, hint: pick(TIPS.mixed.EN) };
+  return { type: "type-frac", instruction: "Convert to an Improper Fraction! 🔄", displayMixed: { w: w2, n, d }, answer: { n: ansN, d }, hint: pick(TIPS.mixed.EN), process: `(${w2}×${d})+${n} = ${ansN} → ${ansN}/${d}`, fingerprint: `mxd|${w2}+${canon(n, d)}` };
 }
 function genAdd(diff) {
   const maxD = diff === 0 ? 7 : diff === 1 ? 12 : 18, d = R(2, maxD), n1 = R(1, d - 1), n2 = R(1, d - 1);
   const [ansN, ansD] = simp(n1 + n2, d);
   const ch = shuf([{ n: ansN, d: ansD, isCorrect: true }, { n: n1 + n2, d: d * 2, isCorrect: false }, { n: ansN + R(1, 3), d: ansD, isCorrect: false }, { n: Math.abs(n1 - n2) || 1, d, isCorrect: false }]);
-  if (diff < 2) return { type: "mc-frac", instruction: diff === 0 ? "Add the fractions! ➕" : "Add and simplify! ➕", displayOp: { n1, d1: d, op: "+", n2, d2: d }, choices: ch, answer: { n: ansN, d: ansD }, hint: pick(TIPS.add.EN) };
-  return { type: "type-frac", instruction: "Add and simplify! ➕", displayOp: { n1, d1: d, op: "+", n2, d2: d }, answer: { n: ansN, d: ansD }, hint: pick(TIPS.add.EN) };
+  if (diff < 2) return { type: "mc-frac", instruction: diff === 0 ? "Add the fractions! ➕" : "Add and simplify! ➕", displayOp: { n1, d1: d, op: "+", n2, d2: d }, choices: ch, answer: { n: ansN, d: ansD }, hint: pick(TIPS.add.EN), process: `${n1}/${d} + ${n2}/${d} = ${n1+n2}/${d} → ${ansN}/${ansD}`, fingerprint: fpPair("addS", [n1, d], [n2, d], { commutative: true, sep: "+" }) };
+  return { type: "type-frac", instruction: "Add and simplify! ➕", displayOp: { n1, d1: d, op: "+", n2, d2: d }, answer: { n: ansN, d: ansD }, hint: pick(TIPS.add.EN), process: `${n1}/${d} + ${n2}/${d} = ${n1+n2}/${d} → ${ansN}/${ansD}`, fingerprint: fpPair("addS", [n1, d], [n2, d], { commutative: true, sep: "+" }) };
 }
 function genSub(diff) {
   const maxD = diff === 0 ? 7 : diff === 1 ? 12 : 18, d = R(2, maxD), n1 = R(2, d - 1), n2 = R(1, n1 - 1);
   const [ansN, ansD] = simp(n1 - n2, d);
   const ch = shuf([{ n: ansN, d: ansD, isCorrect: true }, { n: n1 + n2, d, isCorrect: false }, { n: ansN + R(1, 3), d: ansD, isCorrect: false }, { n: Math.max(1, ansN - R(1, 2)), d: ansD, isCorrect: false }]);
-  if (diff < 2) return { type: "mc-frac", instruction: diff === 0 ? "Subtract the fractions! ➖" : "Subtract and simplify! ➖", displayOp: { n1, d1: d, op: "−", n2, d2: d }, choices: ch, answer: { n: ansN, d: ansD }, hint: pick(TIPS.sub.EN) };
-  return { type: "type-frac", instruction: "Subtract and simplify! ➖", displayOp: { n1, d1: d, op: "−", n2, d2: d }, answer: { n: ansN, d: ansD }, hint: pick(TIPS.sub.EN) };
+  if (diff < 2) return { type: "mc-frac", instruction: diff === 0 ? "Subtract the fractions! ➖" : "Subtract and simplify! ➖", displayOp: { n1, d1: d, op: "−", n2, d2: d }, choices: ch, answer: { n: ansN, d: ansD }, hint: pick(TIPS.sub.EN), process: `${n1}/${d} − ${n2}/${d} = ${n1-n2}/${d} → ${ansN}/${ansD}`, fingerprint: fpPair("subS", [n1, d], [n2, d], { commutative: false, sep: "-" }) };
+  return { type: "type-frac", instruction: "Subtract and simplify! ➖", displayOp: { n1, d1: d, op: "−", n2, d2: d }, answer: { n: ansN, d: ansD }, hint: pick(TIPS.sub.EN), process: `${n1}/${d} − ${n2}/${d} = ${n1-n2}/${d} → ${ansN}/${ansD}`, fingerprint: fpPair("subS", [n1, d], [n2, d], { commutative: false, sep: "-" }) };
 }
-function genBossQ() { return pick([() => genProper(R(0, 2)), () => genImproper(R(0, 2)), () => genMixed(R(0, 2)), () => genAdd(R(0, 2)), () => genSub(R(0, 2))])(); }
-const GENS = { proper: genProper, improper: genImproper, mixed: genMixed, add: genAdd, sub: genSub };
+const GENS = { proper: genProper, improper: genImproper, mixed: genMixed, add: genAdd, sub: genSub, ...NEW_GENS };
+function genBossQ() {
+  const ids = Object.keys(GENS);
+  const id = pick(ids);
+  return GENS[id](R(0, 2));
+}
 
 /* ═══════════════════════════════════════════════════
    CONFETTI
@@ -667,7 +672,7 @@ function TutorialScreen({ worldIdx, lang, onFinish, onSkip, music }) {
 /* ═══════════════════════════════════════════════════
    HOME SCREEN
 ═══════════════════════════════════════════════════ */
-function HomeScreen({ onPlay, music, lang }) {
+function HomeScreen({ onPlay, music, lang, onStory }) {
   const stars = useMemo(() => Array.from({ length: 70 }, (_, i) => ({ id: i, l: R(0, 100) + "%", t: R(0, 100) + "%", w: R(1, 4), dur: R(20, 55) / 10 + "s", del: R(0, 55) / 10 + "s", o: R(1, 7) / 10 })), []);
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center" style={{ background: "radial-gradient(ellipse at 50% 30%,#2e1065 0%,#0d0221 60%,#000 100%)" }} onClick={music.initMusic}>
@@ -684,7 +689,8 @@ function HomeScreen({ onPlay, music, lang }) {
           {lang === "TL" ? "▶ SIMULAN ANG PAKIKIPAGSAPALARAN!" : "▶ START ADVENTURE!"}
         </button>
         <div className="mt-10 flex justify-center gap-4 sm:gap-6 text-3xl sm:text-4xl">{["🌲","🔥","⛰️","⚡","💧","👑"].map((e, i) => <span key={i} className="cursor-default select-none" style={{ opacity: 0.55, animation: `idleFloat ${2 + i * 0.3}s ease-in-out ${i * 0.2}s infinite` }}>{e}</span>)}</div>
-        <p className="mt-5 font-bold text-xs sm:text-sm" style={{ color: "rgba(255,255,255,0.25)" }}>{lang === "TL" ? "5 Mundo · 15 Antas · 1 Epikong Laban sa Boss!" : "5 Worlds · 15 Levels · 1 Epic Boss Battle!"}</p>
+        {onStory && <button onClick={onStory} className="mt-4 text-white/80 font-bold text-xs sm:text-sm px-4 py-2 rounded-full cursor-pointer hover:text-white" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)" }}>📖 {lang === "TL" ? "Kuwento" : "Story"}</button>}
+        <p className="mt-5 font-bold text-xs sm:text-sm" style={{ color: "rgba(255,255,255,0.25)" }}>{lang === "TL" ? "12 Mundo · 36 Antas · 1 Epikong Laban sa Boss!" : "12 Worlds · 36 Levels · 1 Epic Boss Battle!"}</p>
         <p className="mt-2 font-bold text-xs" style={{ color: "rgba(255,255,255,0.18)" }}>{lang === "TL" ? "✅ Awtomatikong nase-save ang progreso" : "✅ Progress auto-saves"}</p>
       </div>
     </div>
@@ -720,7 +726,18 @@ function MapScreen({ gs, onSelect, onBoss, music, onReset, onChangeLang, lang })
         </div>
         <div className="space-y-3">
           {WORLDS.map((w, wi) => {
-            const lvlOk = (li) => { if (wi === 0 && li === 0) return true; if (li === 0) return WORLDS[wi - 1].levels.every((_, x) => gs.stars[`${WORLDS[wi - 1].id}-${x}`]); return !!gs.stars[`${w.id}-${li - 1}`]; };
+            const lvlOk = (li) => {
+              if (wi === 0 && li === 0) return true;
+              if (li === 0) {
+                const prev = WORLDS[wi - 1];
+                const allBeaten = prev.levels.every((_, x) => gs.stars[`${prev.id}-${x}`]);
+                if (allBeaten) return true;
+                const arr = gs.performance?.[`${prev.id}__${prev.levels.length - 1}`] || [];
+                if (arr.length >= 5 && (arr.reduce((a, b) => a + b, 0) / arr.length) >= 0.7) return true;
+                return false;
+              }
+              return !!gs.stars[`${w.id}-${li - 1}`];
+            };
             const worldOk = lvlOk(0);
             const tutSeen = gs.tutSeen?.[w.id];
             return (
@@ -780,10 +797,16 @@ function MapScreen({ gs, onSelect, onBoss, music, onReset, onChangeLang, lang })
 /* ═══════════════════════════════════════════════════
    BATTLE SCREEN  (wrong = same Q stays, correct = new Q, win/lose on HP)
 ═══════════════════════════════════════════════════ */
-function BattleScreen({ worldIdx, levelIdx, onWin, onLose, music, lang }) {
+function BattleScreen({ worldIdx, levelIdx, onWin, onLose, music, lang, save }) {
   const w = WORLDS[worldIdx], lv = w.levels[levelIdx], ENEMY_HP = 5;
-  const diff = lv.diff;
-  const [lives, setLives] = useState(3), [q, setQ] = useState(() => GENS[w.id](diff)), [locked, setLocked] = useState(false);
+  const baseDiff = lv.diff;
+  const perfKey = `${w.id}__${levelIdx}`;
+  const adaptiveDiff = useMemo(() => adaptDiff(baseDiff, save?.performance?.[perfKey]), [baseDiff, perfKey, save]);
+  const diff = adaptiveDiff;
+  const dedupKey = `${w.id}__${levelIdx}`;
+  const nextQ = () => pickQuestion(GENS[w.id], dedupKey, diff, save, writeSave);
+  const [lives, setLives] = useState(3), [q, setQ] = useState(() => nextQ()), [locked, setLocked] = useState(false);
+  const [missesOnQ, setMissesOnQ] = useState(0), [showProcess, setShowProcess] = useState(false), [reinforce, setReinforce] = useState("");
   const [lastOk, setLastOk] = useState(null), [tipText, setTipText] = useState(""), [eClass, setEClass] = useState("enemy-idle");
   const [hClass, setHClass] = useState("hammy-bob"), [atk, setAtk] = useState(null), [dmgs, setDmgs] = useState([]);
   const [showConf, setShowConf] = useState(false), [screenCls, setScreenCls] = useState(""), [xp, setXp] = useState(0);
@@ -800,22 +823,33 @@ function BattleScreen({ worldIdx, levelIdx, onWin, onLose, music, lang }) {
 
   const handleCorrect = () => {
     if (locked) return; setLocked(true);
+    sfx.correct();
+    recordPerf(save, perfKey, true, writeSave);
     const ns = streak + 1; setStreak(ns);
     setStreakMsg(ns === 3 ? (lang === "TL" ? "🔥 NAGLILIYAB!" : "🔥 ON FIRE!") : ns === 5 ? (lang === "TL" ? "⚡ HINDI MATALO!" : "⚡ UNSTOPPABLE!") : ns >= 7 ? "💫 LEGENDARY!" : "");
     const nx = xp + 10; setXp(nx); const ne = eHp - 1; setEHp(ne); setLastOk(true); setTipText("");
+    if (q?.process && Math.random() < 0.3) setReinforce(q.process); else setReinforce(lang === "TL" ? "Galing!" : "Nice work!");
+    setMissesOnQ(0); setShowProcess(false);
     doAtk("fwd", "⚔️");
     setTimeout(() => {
       setEClass("enemy-hit"); addDmg("💥 HIT!", "#4ade80");
       setTimeout(() => {
         if (ne <= 0) { setEClass("enemy-die"); setShowConf(true); setTimeout(() => onWin(lives, ENEMY_HP, nx), 1100); }
-        else { setEClass("enemy-idle"); setQ(GENS[w.id](diff)); resetInput(); setLastOk(null); setLocked(false); }
+        else { setEClass("enemy-idle"); setQ(nextQ()); resetInput(); setLastOk(null); setLocked(false); setReinforce(""); }
       }, 620);
     }, 280);
   };
 
   const handleWrong = (hint) => {
     if (locked) return; setLocked(true);
-    const nl = lives - 1; setLives(nl); setStreak(0); setStreakMsg(""); setLastOk(false); setTipText(hint);
+    sfx.wrong();
+    recordPerf(save, perfKey, false, writeSave);
+    setMissesOnQ((prev) => {
+      if (prev === 0) setTipText(hint);
+      else if (q?.process) setShowProcess(true);
+      return prev + 1;
+    });
+    const nl = lives - 1; setLives(nl); setStreak(0); setStreakMsg(""); setLastOk(false); if (missesOnQ === 0) setTipText(hint);
     doAtk("bwd", lv.enemy.atk || "💥"); setScreenCls("flash-red"); setTimeout(() => setScreenCls(""), 600);
     setHClass("hammy-hit screen-shake"); addDmg("-❤️", "#f87171");
     setTimeout(() => {
@@ -885,6 +919,8 @@ function BattleScreen({ worldIdx, levelIdx, onWin, onLose, music, lang }) {
           </div>
         )}
         {tipText && <div className="rounded-xl p-3 mb-3 tip-in" style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.35)" }}><p className="font-black text-sm" style={{ color: "#fde68a" }}>💡 {lang === "TL" ? "Pahiwatig" : "Tip"}: {tipText}</p></div>}
+        {showProcess && q?.process && <div className="rounded-xl p-3 mb-3 tip-in" style={{ background: "rgba(96,165,250,0.12)", border: "1px solid rgba(96,165,250,0.4)" }}><p className="font-black text-xs uppercase tracking-wide mb-1" style={{ color: "#93c5fd" }}>{lang === "TL" ? "Hakbang-hakbang" : "Step by step"}</p><p className="font-bold text-sm" style={{ color: "#dbeafe" }}>{q.process}</p></div>}
+        {reinforce && lastOk && <div className="rounded-xl p-2.5 mb-3 text-center font-black text-xs slide-up" style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(74,222,128,0.3)", color: "#bbf7d0" }}>✨ {reinforce}</div>}
         {locked && lastOk !== null && (
           <div className="rounded-xl p-3 mb-3 text-center font-black text-base slide-up" style={{ background: lastOk ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)", border: `1px solid ${lastOk ? "rgba(74,222,128,0.4)" : "rgba(248,113,113,0.4)"}`, color: lastOk ? "#86efac" : "#fca5a5" }}>
             {lastOk ? pick(lang === "TL" ? ["🎉 Magaling, Hammy!","⭐ Perpekto!","🔥 Tama!","💪 Napakagaling!","✨ Kahanga-hanga!"] : ["🎉 AMAZING! Hammy strikes!","⭐ PERFECT!","🔥 CORRECT!","💪 GREAT JOB!","✨ NAILED IT!"]) : (lang === "TL" ? "😅 Mali! Basahin ang pahiwatig at subukang muli!" : "😅 Wrong! Read the tip and try again!")}
@@ -893,7 +929,8 @@ function BattleScreen({ worldIdx, levelIdx, onWin, onLose, music, lang }) {
         {/* Answers */}
         {!locked && q && (
           <div className="mb-3">
-            {(q.type === "mc-frac" || q.type === "mc-mixed") && <div className="grid grid-cols-2 gap-2.5">{q.choices.map((c, i) => <button key={i} onClick={() => checkMC(c)} className="rounded-xl py-3 px-2 font-black text-white flex items-center justify-center min-h-[72px] cursor-pointer border-none hover:scale-[1.03] active:scale-95 transition-transform" style={{ background: "rgba(255,255,255,0.07)", border: "2px solid rgba(255,255,255,0.14)" }}>{q.type === "mc-mixed" ? <Mixed w={c.w} n={c.n} d={c.d} /> : <Frac n={c.n} d={c.d} big />}</button>)}</div>}
+            {(q.type === "mc-frac" || q.type === "mc-mixed") && <div className="grid grid-cols-2 gap-2.5">{q.choices.map((c, i) => <button key={i} onClick={() => { tap(); checkMC(c); }} className="rounded-xl py-3 px-2 font-black text-white flex items-center justify-center min-h-[72px] cursor-pointer border-none hover:scale-[1.03] active:scale-95 transition-transform" style={{ background: "rgba(255,255,255,0.07)", border: "2px solid rgba(255,255,255,0.14)" }}>{q.type === "mc-mixed" ? <Mixed w={c.w} n={c.n} d={c.d} /> : <Frac n={c.n} d={c.d} big />}</button>)}</div>}
+            {q.type === "mc-compare" && <div className="grid grid-cols-3 gap-2.5">{q.choices.map((c, i) => <button key={i} onClick={() => { tap(); checkMC(c); }} className="rounded-xl py-4 px-2 font-black text-white text-3xl sm:text-4xl flex items-center justify-center min-h-[72px] cursor-pointer border-none hover:scale-[1.03] active:scale-95 transition-transform" style={{ fontFamily: "Fredoka One,cursive", background: "rgba(255,255,255,0.07)", border: "2px solid rgba(255,255,255,0.14)" }}>{c.label}</button>)}</div>}
             {q.type === "type-frac" && (
               <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}>
                 <p className="text-xs font-black uppercase tracking-wider mb-3" style={{ color: "rgba(255,255,255,.45)" }}>✏️ {lang === "TL" ? "I-type ang iyong sagot:" : "Type your answer:"}</p>
@@ -935,20 +972,56 @@ function BattleScreen({ worldIdx, levelIdx, onWin, onLose, music, lang }) {
 /* ═══════════════════════════════════════════════════
    BOSS SCREEN
 ═══════════════════════════════════════════════════ */
-function BossScreen({ onWin, onLose, music, lang }) {
+function BossScreen({ onWin, onLose, music, lang, save }) {
   const TOTAL_TIME = 60, TOTAL_Q = 10;
-  const [timeLeft, setTimeLeft] = useState(TOTAL_TIME), [score, setScore] = useState(0), [qNum, setQNum] = useState(0), [q, setQ] = useState(() => genBossQ());
+  const dedupKey = "boss__main";
+  const pickBoss = () => {
+    const ids = Object.keys(GENS);
+    const id = ids[Math.floor(Math.random() * ids.length)];
+    return pickQuestion(GENS[id], dedupKey, 2, save, writeSave);
+  };
+  const endTimeRef = useRef(Date.now() + TOTAL_TIME * 1000);
+  const [timeLeft, setTimeLeft] = useState(TOTAL_TIME), [score, setScore] = useState(0), [qNum, setQNum] = useState(0), [q, setQ] = useState(() => pickBoss());
   const [locked, setLocked] = useState(false), [bossHp, setBossHp] = useState(TOTAL_Q), [tipText, setTipText] = useState(""), [lastOk, setLastOk] = useState(null);
   const [bossAnim, setBossAnim] = useState("boss-float"), [atk, setAtk] = useState(null), [screenCls, setScreenCls] = useState(""), [showConf, setShowConf] = useState(false);
   const [typeN, setTypeN] = useState(""), [typeD, setTypeD] = useState(""), [typeW, setTypeW] = useState("");
+  const [missesOnQ, setMissesOnQ] = useState(0), [showProcess, setShowProcess] = useState(false);
   const ended = useRef(false);
   const L = (en, tl) => lang === "TL" ? tl : en;
-  useEffect(() => { const t = setInterval(() => setTimeLeft(p => { if (p <= 1) { clearInterval(t); if (!ended.current) { ended.current = true; onLose(); } return 0; } return p - 1; }), 1000); return () => clearInterval(t); }, []);
+  const phase = useMemo(() => qNum < 3 ? 1 : qNum < 7 ? 2 : 3, [qNum]);
+  useEffect(() => {
+    const t = setInterval(() => {
+      const remain = Math.max(0, Math.ceil((endTimeRef.current - Date.now()) / 1000));
+      setTimeLeft(remain);
+      if (remain <= 0) { clearInterval(t); if (!ended.current) { ended.current = true; onLose(); } }
+    }, 250);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => { if (phase === 3) sfx.bossRoar(); }, [phase]);
   const doAtk = (d, e) => { setAtk(null); setTimeout(() => setAtk({ dir: d, e, k: Date.now() }), 20); setTimeout(() => setAtk(null), 660); };
   const resetIn = () => { setTypeW(""); setTypeN(""); setTypeD(""); };
-  const advance = (ok) => { const n = qNum + 1; if (n >= TOTAL_Q) { ended.current = true; const fs = score + (ok ? 1 : 0); if (fs >= 5) { setShowConf(true); setTimeout(() => onWin(fs, TOTAL_Q), 1000); } else setTimeout(() => onLose(), 1000); return; } setTimeout(() => { setQ(genBossQ()); setQNum(n); setLocked(false); setLastOk(null); setTipText(""); resetIn(); }, 900); };
-  const correct = () => { if (locked) return; setLocked(true); setScore(p => p + 1); setBossHp(p => p - 1); setLastOk(true); doAtk("fwd", "⚡"); setBossAnim("enemy-hit"); setTimeout(() => setBossAnim("boss-float"), 700); advance(true); };
-  const wrong = (h) => { if (locked) return; setLocked(true); setLastOk(false); setTipText(h); doAtk("bwd", "💀"); setScreenCls("flash-red"); setTimeout(() => setScreenCls(""), 600); advance(false); };
+  const advance = (ok) => { const n = qNum + 1; if (n >= TOTAL_Q) { ended.current = true; const fs = score + (ok ? 1 : 0); if (fs >= 5) { setShowConf(true); setTimeout(() => onWin(fs, TOTAL_Q), 1000); } else setTimeout(() => onLose(), 1000); return; } setTimeout(() => { setQ(pickBoss()); setQNum(n); setLocked(false); setLastOk(null); setTipText(""); setMissesOnQ(0); setShowProcess(false); resetIn(); }, 900); };
+  const correct = () => {
+    if (locked) return; setLocked(true);
+    sfx.correct();
+    recordPerf(save, dedupKey, true, writeSave);
+    setScore(p => p + 1); setBossHp(p => p - 1); setLastOk(true);
+    doAtk("fwd", "⚡"); setBossAnim("enemy-hit"); setTimeout(() => setBossAnim("boss-float"), 700);
+    advance(true);
+  };
+  const wrong = (h) => {
+    if (locked) return; setLocked(true);
+    sfx.wrong();
+    recordPerf(save, dedupKey, false, writeSave);
+    setMissesOnQ((prev) => {
+      if (prev === 0) setTipText(h);
+      else if (q?.process) setShowProcess(true);
+      return prev + 1;
+    });
+    setLastOk(false); setTipText(h);
+    doAtk("bwd", "💀"); setScreenCls("flash-red"); setTimeout(() => setScreenCls(""), 600);
+    advance(false);
+  };
   const checkMC = (c) => { if (locked) return; c.isCorrect ? correct() : wrong(c.hint || q.hint); };
   const checkType = () => { if (locked) return; const { answer: a } = q; let ok = false; if (q.type === "type-mixed") ok = +typeW === a.w && +typeN === a.n && +typeD === a.d; else { const n = +typeN, d = +typeD; if (!d) return; ok = n * a.d === a.n * d; } ok ? correct() : wrong(q.hint); };
   const danger = timeLeft <= 10, timePct = (timeLeft / TOTAL_TIME) * 100;
@@ -975,10 +1048,13 @@ function BossScreen({ onWin, onLose, music, lang }) {
           <div className="flex items-center justify-center min-h-[55px]"><QDisplay q={q} /></div>
         </div>
         {tipText && <div className="rounded-xl p-3 mb-3 tip-in" style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)" }}><p className="font-black text-sm" style={{ color: "#fde68a" }}>💡 {L("Tip","Pahiwatig")}: {tipText}</p></div>}
+        {showProcess && q?.process && <div className="rounded-xl p-3 mb-3 tip-in" style={{ background: "rgba(96,165,250,0.12)", border: "1px solid rgba(96,165,250,0.4)" }}><p className="font-black text-xs uppercase tracking-wide mb-1" style={{ color: "#93c5fd" }}>{L("Step by step","Hakbang-hakbang")}</p><p className="font-bold text-sm" style={{ color: "#dbeafe" }}>{q.process}</p></div>}
+        {phase >= 2 && <div aria-hidden className="fixed inset-0 pointer-events-none" style={{ zIndex: 1, background: phase === 2 ? "radial-gradient(ellipse at center,transparent 55%,rgba(220,38,38,0.18) 100%)" : "radial-gradient(ellipse at center,transparent 40%,rgba(220,38,38,0.32) 100%)", animation: phase === 3 ? "bgStar 0.6s ease-in-out infinite" : undefined }} />}
         {locked && lastOk !== null && <div className="rounded-xl p-2.5 mb-3 text-center font-black text-sm slide-up" style={{ background: lastOk ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)", border: `1px solid ${lastOk ? "rgba(74,222,128,0.3)" : "rgba(248,113,113,0.3)"}`, color: lastOk ? "#86efac" : "#fca5a5" }}>{lastOk ? (lang === "TL" ? "🔥 TAMA!" : "🔥 CORRECT!") : (lang === "TL" ? "😅 Mali — tingnan ang pahiwatig!" : "😅 Wrong — check the tip!")}</div>}
         {!locked && q && (
           <div className="mb-3">
-            {(q.type === "mc-frac" || q.type === "mc-mixed") && <div className="grid grid-cols-2 gap-2">{q.choices.map((c, i) => <button key={i} onClick={() => checkMC(c)} className="rounded-xl py-3 px-2 font-black text-white flex items-center justify-center min-h-[65px] cursor-pointer border-none hover:scale-[1.03] active:scale-95 transition-transform" style={{ background: "rgba(255,255,255,0.07)", border: "2px solid rgba(255,255,255,0.14)" }}>{q.type === "mc-mixed" ? <Mixed w={c.w} n={c.n} d={c.d} /> : <Frac n={c.n} d={c.d} big />}</button>)}</div>}
+            {(q.type === "mc-frac" || q.type === "mc-mixed") && <div className="grid grid-cols-2 gap-2">{q.choices.map((c, i) => <button key={i} onClick={() => { tap(); checkMC(c); }} className="rounded-xl py-3 px-2 font-black text-white flex items-center justify-center min-h-[65px] cursor-pointer border-none hover:scale-[1.03] active:scale-95 transition-transform" style={{ background: "rgba(255,255,255,0.07)", border: "2px solid rgba(255,255,255,0.14)" }}>{q.type === "mc-mixed" ? <Mixed w={c.w} n={c.n} d={c.d} /> : <Frac n={c.n} d={c.d} big />}</button>)}</div>}
+            {q.type === "mc-compare" && <div className="grid grid-cols-3 gap-2">{q.choices.map((c, i) => <button key={i} onClick={() => { tap(); checkMC(c); }} className="rounded-xl py-4 px-2 font-black text-white text-3xl flex items-center justify-center min-h-[65px] cursor-pointer border-none hover:scale-[1.03] active:scale-95 transition-transform" style={{ fontFamily: "Fredoka One,cursive", background: "rgba(255,255,255,0.07)", border: "2px solid rgba(255,255,255,0.14)" }}>{c.label}</button>)}</div>}
             {(q.type === "type-frac" || q.type === "type-mixed") && (
               <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}>
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -1071,9 +1147,10 @@ export default function App() {
   const music = useMusicEngine();
   const lang = gs.lang || "EN";
 
-  // If lang already set, skip language picker
-  useEffect(() => { if (gs.lang) setScreen("home"); }, []);
+  // If lang already set, skip language picker (and route through mission intro if first time)
+  useEffect(() => { if (gs.lang) setScreen(gs.missionSeen ? "home" : "mission"); }, []);
   useEffect(() => { writeSave(gs); }, [gs]);
+  useEffect(() => { setSfxMuted(music.muted); }, [music.muted]);
 
   const setLang = (l) => setGs(p => ({ ...p, lang: l }));
   const goMap = () => setScreen("map");
@@ -1082,13 +1159,15 @@ export default function App() {
   const markTutSeen = (wid) => setGs(p => ({ ...p, tutSeen: { ...(p.tutSeen || {}), [wid]: true } }));
   const handleReset = () => { const f = { xp: 0, lv: 1, stars: {}, tutSeen: {}, lang }; setGs(f); writeSave(f); };
 
-  const handlePick = (l) => { setLang(l); setScreen("home"); };
+  const handlePick = (l) => { setLang(l); setScreen(gs.missionSeen ? "home" : "mission"); };
   const handleChangeLang = (l) => setGs(p => ({ ...p, lang: l }));
+  const handleMissionDone = () => { setGs(p => ({ ...p, missionSeen: true })); setScreen("home"); };
+  const handleStoryReplay = () => setScreen("mission");
 
   const handleSelect = (wi, li) => {
     setWorldIdx(wi); setLevelIdx(li);
     const wid = WORLDS[wi].id;
-    if (!gs.tutSeen?.[wid]) { setScreen("tutorial"); }
+    if (!gs.tutSeen?.[wid] && TUTORIALS[wid]) { setScreen("tutorial"); }
     else { setScreen("battle"); }
   };
 
@@ -1103,17 +1182,26 @@ export default function App() {
   };
   const handleBossWin = (score, total) => { addXP(score * 15 + 60); setWinData({ score, total }); setScreen("bosswin"); };
   const handleLose = () => setScreen("gameover");
-  const nextLevel = () => { const w = WORLDS[worldIdx]; if (levelIdx < w.levels.length - 1) { setLevelIdx(l => l + 1); setScreen("battle"); } else if (worldIdx < WORLDS.length - 1) { setWorldIdx(wi => wi + 1); setLevelIdx(0); setScreen("tutorial"); } else setScreen("map"); };
+  const nextLevel = () => {
+    const w = WORLDS[worldIdx];
+    if (levelIdx < w.levels.length - 1) { setLevelIdx(l => l + 1); setScreen("battle"); }
+    else if (worldIdx < WORLDS.length - 1) {
+      const nw = WORLDS[worldIdx + 1];
+      setWorldIdx(wi => wi + 1); setLevelIdx(0);
+      setScreen(gs.tutSeen?.[nw.id] || !TUTORIALS[nw.id] ? "battle" : "tutorial");
+    } else setScreen("map");
+  };
 
   return (
     <div>
       <style>{CSS}</style>
       {screen === "langpick"  && <LanguagePicker onPick={handlePick} />}
-      {screen === "home"      && <HomeScreen onPlay={goMap} music={music} lang={lang} />}
+      {screen === "mission"   && <MissionIntroScreen lang={lang} save={gs} persistSave={writeSave} onDone={handleMissionDone} />}
+      {screen === "home"      && <HomeScreen onPlay={goMap} music={music} lang={lang} onStory={handleStoryReplay} />}
       {screen === "map"       && <MapScreen gs={gs} onSelect={handleSelect} onBoss={() => setScreen("boss")} music={music} onReset={handleReset} onChangeLang={handleChangeLang} lang={lang} />}
       {screen === "tutorial"  && <TutorialScreen worldIdx={worldIdx} lang={lang} onFinish={handleTutFinish} onSkip={handleTutSkip} music={music} />}
-      {screen === "battle"    && <BattleScreen key={`${worldIdx}-${levelIdx}-${Date.now()}`} worldIdx={worldIdx} levelIdx={levelIdx} onWin={handleWin} onLose={handleLose} music={music} lang={lang} />}
-      {screen === "boss"      && <BossScreen key={Date.now()} onWin={handleBossWin} onLose={handleLose} music={music} lang={lang} />}
+      {screen === "battle"    && <BattleScreen key={`${worldIdx}-${levelIdx}-${Date.now()}`} worldIdx={worldIdx} levelIdx={levelIdx} onWin={handleWin} onLose={handleLose} music={music} lang={lang} save={gs} />}
+      {screen === "boss"      && <BossScreen key={Date.now()} onWin={handleBossWin} onLose={handleLose} music={music} lang={lang} save={gs} />}
       {screen === "win"       && <WinScreen worldIdx={worldIdx} levelIdx={levelIdx} livesLeft={winData.livesLeft} xpGained={winData.xpGained} onNext={nextLevel} onRetry={() => setScreen("battle")} onMap={goMap} music={music} lang={lang} />}
       {screen === "bosswin"   && <BossWinScreen score={winData.score} total={winData.total} onMap={goMap} music={music} lang={lang} />}
       {screen === "gameover"  && <GameOverScreen onRetry={() => setScreen("battle")} onMap={goMap} music={music} lang={lang} />}
