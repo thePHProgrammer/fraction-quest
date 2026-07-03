@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { Scene3D, Hammy3D } from "./FX3D.jsx";
 
 /* ═══════════════════════════════════════════════════
    SAVE / LOAD  (localStorage)
@@ -459,7 +460,9 @@ function LanguagePicker({ onPick }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center" style={{ background: "radial-gradient(ellipse at 50% 30%,#1e1b4b 0%,#0d0221 60%,#000 100%)" }}>
       <style>{CSS}</style>
-      <div className="idle-float mb-4"><Hamster3D size={100} style={{ filter: "drop-shadow(0 0 22px rgba(255,200,100,.65))" }} /></div>
+      <Scene3D theme="cosmic" />
+      <div className="relative flex flex-col items-center" style={{ zIndex: 1 }}>
+      <div className="mb-3"><Hammy3D size={150} /></div>
       <h2 className="font-black text-3xl sm:text-4xl text-white mb-2" style={{ fontFamily: "Fredoka One,cursive" }}>Choose your language!</h2>
       <p className="font-black text-2xl sm:text-3xl mb-8" style={{ fontFamily: "Fredoka One,cursive", color: "rgba(255,255,255,0.6)" }}>Piliin ang iyong wika!</p>
       <div className="flex gap-5 flex-wrap justify-center">
@@ -477,6 +480,7 @@ function LanguagePicker({ onPick }) {
         </button>
       </div>
       <p className="mt-6 text-xs font-bold" style={{ color: "rgba(255,255,255,0.2)" }}>You can change this later from the map · Mababago mo ito sa mapa</p>
+      </div>
     </div>
   );
 }
@@ -519,7 +523,8 @@ function TutorialScreen({ worldIdx, lang, onFinish, onSkip, music }) {
     <div className="min-h-screen px-3 py-4 pb-10" style={{ background: w.cssBg || "linear-gradient(135deg,#0a0a1a,#050510)" }}>
       <style>{CSS}</style>
       <MusicBtn muted={music.muted} onToggle={music.toggleMute} />
-      <div className="max-w-lg mx-auto">
+      <Scene3D theme={w.id} dim={0.42} />
+      <div className="max-w-lg mx-auto relative" style={{ zIndex: 1 }}>
         {/* Header */}
         <div className="flex items-center gap-2 mb-4">
           <button onClick={onSkip} className="font-black text-xs px-3 py-1.5 rounded-full cursor-pointer border-none" style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,.5)" }}>
@@ -668,16 +673,13 @@ function TutorialScreen({ worldIdx, lang, onFinish, onSkip, music }) {
    HOME SCREEN
 ═══════════════════════════════════════════════════ */
 function HomeScreen({ onPlay, music, lang }) {
-  const stars = useMemo(() => Array.from({ length: 70 }, (_, i) => ({ id: i, l: R(0, 100) + "%", t: R(0, 100) + "%", w: R(1, 4), dur: R(20, 55) / 10 + "s", del: R(0, 55) / 10 + "s", o: R(1, 7) / 10 })), []);
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center" style={{ background: "radial-gradient(ellipse at 50% 30%,#2e1065 0%,#0d0221 60%,#000 100%)" }} onClick={music.initMusic}>
       <style>{CSS}</style>
       <MusicBtn muted={music.muted} onToggle={music.toggleMute} />
-      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 0 }}>
-        {stars.map(s => <div key={s.id} className="absolute rounded-full bg-white" style={{ left: s.l, top: s.t, width: s.w, height: s.w, animation: `bgStar ${s.dur} ease-in-out ${s.del} infinite`, opacity: s.o }} />)}
-      </div>
+      <Scene3D theme="cosmic" />
       <div className="relative flex flex-col items-center" style={{ zIndex: 1 }}>
-        <div className="idle-float mb-3" style={{ filter: "drop-shadow(0 0 22px rgba(255,200,100,.65))" }}><Hamster3D size={110} /></div>
+        <div className="mb-2"><Hammy3D size={170} /></div>
         <h1 className="font-black text-5xl sm:text-7xl lg:text-8xl mb-2 leading-none" style={{ fontFamily: "Fredoka One,cursive", background: "linear-gradient(135deg,#ffd93d 0%,#ff9f43 30%,#ff6b9d 65%,#a78bfa 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>FRACTION<br />QUEST!</h1>
         <p className="font-black text-sm sm:text-base uppercase tracking-widest mb-8" style={{ color: "rgba(255,255,255,0.5)" }}>{lang === "TL" ? "⚔️ Tulungan si Hammy na matalo ang mga praksiyon! ⚔️" : "⚔️ Help Hammy beat fractions! ⚔️"}</p>
         <button onClick={onPlay} className="text-white font-black text-xl sm:text-2xl px-12 sm:px-16 py-4 sm:py-5 rounded-2xl cursor-pointer border-none hover:scale-105 active:scale-95 transition-transform glow-pulse" style={{ fontFamily: "Fredoka One,cursive", background: "linear-gradient(135deg,#ff6b9d,#ff9f43)", boxShadow: "0 8px 0 rgba(0,0,0,.4),0 0 40px rgba(255,107,157,.4)" }}>
@@ -703,7 +705,8 @@ function MapScreen({ gs, onSelect, onBoss, music, onReset, onChangeLang, lang })
     <div className="min-h-screen px-4 py-5 pb-12" style={{ background: "radial-gradient(ellipse at 50% 0%,#1e1b4b 0%,#0d0221 60%,#000 100%)" }}>
       <style>{CSS}</style>
       <MusicBtn muted={music.muted} onToggle={music.toggleMute} />
-      <div className="max-w-lg mx-auto">
+      <Scene3D theme="map" dim={0.4} />
+      <div className="max-w-lg mx-auto relative" style={{ zIndex: 1 }}>
         {/* XP bar */}
         <div className="flex items-center gap-3 rounded-2xl p-3 mb-5" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
           <span className="text-3xl idle-float">🌟</span>
@@ -837,6 +840,7 @@ function BattleScreen({ worldIdx, levelIdx, onWin, onLose, music, lang }) {
   return (
     <div className={`min-h-screen relative overflow-hidden ${screenCls}`} style={{ background: "radial-gradient(ellipse at 50% 0%,rgba(255,255,255,.04) 0%,transparent 60%),linear-gradient(to bottom,#0a0a1a,#050510)" }}>
       <style>{CSS}</style>
+      <Scene3D theme={w.id} dim={0.42} />
       <MusicBtn muted={music.muted} onToggle={music.toggleMute} />
       {showConf && <FancyConfetti />}
       <div className="max-w-lg mx-auto px-3 py-3 relative" style={{ zIndex: 10 }}>
@@ -955,6 +959,7 @@ function BossScreen({ onWin, onLose, music, lang }) {
   return (
     <div className={`min-h-screen relative overflow-hidden ${screenCls}`} style={{ background: "radial-gradient(ellipse at 50% 20%,#451a03 0%,#1c0a00 50%,#000 100%)" }}>
       <style>{CSS}</style>
+      <Scene3D theme="boss" dim={0.42} />
       <MusicBtn muted={music.muted} onToggle={music.toggleMute} />
       {showConf && <FancyConfetti />}
       <div className="max-w-lg mx-auto px-3 py-3 relative" style={{ zIndex: 10 }}>
@@ -1009,7 +1014,9 @@ function WinScreen({ worldIdx, levelIdx, livesLeft, xpGained, onNext, onRetry, o
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center py-8" style={{ background: "radial-gradient(ellipse at 50% 30%,rgba(255,215,61,.1) 0%,#050510 60%,#000 100%)" }}>
       <style>{CSS}</style><MusicBtn muted={music.muted} onToggle={music.toggleMute} /><FancyConfetti />
-      <div className="idle-float mb-3" style={{ filter: "drop-shadow(0 0 22px rgba(255,200,100,.7))" }}><Hamster3D size={100} /></div>
+      <Scene3D theme="win" />
+      <div className="relative flex flex-col items-center" style={{ zIndex: 1 }}>
+      <div className="mb-2"><Hammy3D size={140} glow="#ffd93d" /></div>
       <h2 className="font-black text-4xl sm:text-5xl text-white mb-1" style={{ fontFamily: "Fredoka One,cursive" }}>{L("LEVEL CLEAR!","ANTAS TAPOS!")}</h2>
       {lv && <p className="font-bold text-sm mb-4" style={{ color: "rgba(255,255,255,.45)" }}>{lv.enemy.emoji} {lv.enemy.name} {L("defeated!","natalo!")}</p>}
       <div className="flex gap-3 mb-5">{Array.from({ length: 3 }, (_, i) => <span key={i} className={`text-5xl sm:text-6xl ${i < stars ? "star-in" : "opacity-20"}`} style={{ animationDelay: `${i * 0.25}s` }}>{i < stars ? "⭐" : "☆"}</span>)}</div>
@@ -1024,6 +1031,7 @@ function WinScreen({ worldIdx, levelIdx, livesLeft, xpGained, onNext, onRetry, o
         <button onClick={onMap} className="text-white font-black px-6 py-3 rounded-xl cursor-pointer border-none hover:scale-105 active:scale-95 transition-transform" style={{ background: "rgba(255,255,255,0.09)" }}>🗺️ {L("Map","Mapa")}</button>
         {onNext && <button onClick={onNext} className="text-black font-black px-8 py-3 rounded-xl hover:scale-105 active:scale-95 cursor-pointer border-none transition-transform" style={{ fontFamily: "Fredoka One,cursive", background: "linear-gradient(135deg,#ffd93d,#ff9f43)", boxShadow: "0 5px 0 rgba(0,0,0,.3)" }}>{L("Next Level ▶","Susunod na Antas ▶")}</button>}
       </div>
+      </div>
     </div>
   );
 }
@@ -1032,6 +1040,8 @@ function BossWinScreen({ score, total, onMap, music, lang }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center py-8" style={{ background: "radial-gradient(ellipse at 50% 20%,rgba(251,191,36,.15) 0%,#0a0500 60%,#000 100%)" }}>
       <style>{CSS}</style><MusicBtn muted={music.muted} onToggle={music.toggleMute} /><FancyConfetti />
+      <Scene3D theme="win" />
+      <div className="relative flex flex-col items-center" style={{ zIndex: 1 }}>
       <div className="text-7xl sm:text-9xl boss-float mb-2 select-none" style={{ filter: "drop-shadow(0 0 32px gold)" }}>👑</div>
       <h2 className="font-black text-4xl sm:text-5xl text-yellow-300 mb-1" style={{ fontFamily: "Fredoka One,cursive" }}>{L("BOSS DEFEATED!","NATALO ANG BOSS!")}</h2>
       <p className="font-bold mb-4" style={{ color: "rgba(255,255,255,.5)" }}>{L("Hammy is a TRUE FRACTION MASTER! 🐹","Si Hammy ay isang TUNAY NA MAESTRO NG PRAKSIYON! 🐹")}</p>
@@ -1041,6 +1051,7 @@ function BossWinScreen({ score, total, onMap, music, lang }) {
         <div className="font-bold text-sm uppercase mt-1" style={{ color: "rgba(255,255,255,.4)" }}>{L("Questions Correct!","Tamang Sagot!")}</div>
       </div>
       <button onClick={onMap} className="text-black font-black text-lg px-10 py-4 rounded-2xl hover:scale-105 active:scale-95 cursor-pointer border-none transition-transform" style={{ fontFamily: "Fredoka One,cursive", background: "linear-gradient(135deg,#ffd93d,#ff9f43)", boxShadow: "0 6px 0 rgba(0,0,0,.3)" }}>🗺️ {L("Back to Map","Bumalik sa Mapa")}</button>
+      </div>
     </div>
   );
 }
@@ -1049,12 +1060,15 @@ function GameOverScreen({ onRetry, onMap, music, lang }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center gap-5" style={{ background: "radial-gradient(ellipse at 50% 30%,rgba(220,38,38,.15) 0%,#0a0000 60%,#000 100%)" }}>
       <style>{CSS}</style><MusicBtn muted={music.muted} onToggle={music.toggleMute} />
+      <Scene3D theme="gameover" />
+      <div className="relative flex flex-col items-center gap-5" style={{ zIndex: 1 }}>
       <div className="text-8xl select-none" style={{ animation: "idleFloat 2s ease-in-out infinite" }}>💔</div>
       <h2 className="font-black text-5xl sm:text-6xl text-red-400" style={{ fontFamily: "Fredoka One,cursive" }}>{L("OH NO!","AWIT!")}</h2>
       <p className="font-bold text-base max-w-xs leading-relaxed" style={{ color: "rgba(255,255,255,.55)" }}>{L("Hammy ran out of hearts! 🐹💔\nEvery mistake teaches something! 💡\nYou can do this! 💪","Naubusan si Hammy ng puso! 🐹💔\nBawat pagkakamali ay nagdudulot ng kaalaman! 💡\nKaya mo ito! 💪")}</p>
       <div className="flex gap-3 mt-2">
         <button onClick={onRetry} className="text-white font-black text-lg px-8 py-4 rounded-2xl hover:scale-105 active:scale-95 cursor-pointer border-none transition-transform" style={{ fontFamily: "Fredoka One,cursive", background: "linear-gradient(135deg,#ef4444,#dc2626)", boxShadow: "0 6px 0 rgba(0,0,0,.3)" }}>💪 {L("Try Again!","Subukan Muli!")}</button>
         <button onClick={onMap} className="text-white font-black text-lg px-8 py-4 rounded-2xl cursor-pointer border-none hover:scale-105 active:scale-95 transition-transform" style={{ background: "rgba(255,255,255,0.09)" }}>🗺️ {L("Map","Mapa")}</button>
+      </div>
       </div>
     </div>
   );
